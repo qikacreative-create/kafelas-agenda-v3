@@ -75,7 +75,9 @@ import {
   saveRekeningToFirebase,
   saveTimToFirebase,
   subscribeLiveJadwalUltimate,
+  initKafelaFirebase,
 } from './services/firebaseClient';
+import { doc, getDoc } from 'firebase/firestore';
 import {
   OfflineIndicator,
   PWAInstallButton,
@@ -283,6 +285,7 @@ export default function App() {
   });
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [desktopSidebarOpen, setDesktopSidebarOpen] = useState(true);
+  const [isPaketExpanded, setIsPaketExpanded] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   useEffect(() => {
@@ -830,6 +833,15 @@ export default function App() {
     setUserRole(fbSession.role);
     setActiveUserName(fbSession.displayName);
     setSessionMode('FIREBASE');
+
+    // Cek Role Super Admin
+    const fb = initKafelaFirebase();
+    if (fb) {
+      const userDoc = await getDoc(doc(fb.db, 'users', fbSession.uid));
+      if (userDoc.exists() && userDoc.data().role === 'superadmin') {
+        setViewMode('SUPER_ADMIN');
+      }
+    }
 
     // Jika ini hanya Reload Halaman (F5) dan Cache lokal untuk Owner ini masih segar (< 5 menit),
     // gunakan langsung Cache lokal (0 Read ke server!) agar super hemat kuota dan instan!
@@ -1829,25 +1841,7 @@ export default function App() {
         <div className="my-2 border-t border-white/10" />
 
         <div className="px-2 py-1 space-y-2">
-          {!isKruAnggota && (
-            <button
-              type="button"
-              onClick={() => {
-                if (isDrawer) setDrawerOpen(false);
-                setViewMode('SUPER_ADMIN');
-              }}
-              className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-sky-400 bg-sky-500/10 hover:bg-sky-500/20 border border-sky-500/20 transition-all cursor-pointer"
-              title="Kelola 30+ Brand SaaS di Super Admin Console"
-            >
-              <div className="flex items-center gap-2">
-                <Server className="w-3.5 h-3.5 text-sky-400" />
-                <span>Super Admin (30+ Brand)</span>
-              </div>
-              <span className="text-[10px] font-mono bg-sky-500/20 px-1.5 py-0.5 rounded text-sky-300">
-                CONSOLE
-              </span>
-            </button>
-          )}
+
           <PWAInstallButton />
         </div>
       </div>
@@ -2112,18 +2106,7 @@ export default function App() {
               <span>Web Publik</span>
             </a>
 
-            {/* Tombol Buka Super Admin Master Console (30+ Brand) */}
-            {!isKruAnggota && (
-              <button
-                type="button"
-                onClick={() => setViewMode('SUPER_ADMIN')}
-                className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-semibold text-sky-300 bg-sky-500/20 hover:bg-sky-500/30 border border-sky-500/30 transition-all shadow-xs cursor-pointer"
-                title="Buka Super Admin Master Console (Kelola 30+ Brand SaaS)"
-              >
-                <Server className="w-3.5 h-3.5 text-sky-400" />
-                <span>Super Admin</span>
-              </button>
-            )}
+
           </div>
         </header>
 
@@ -2497,7 +2480,7 @@ export default function App() {
                             d="M 3,5 L 8,19 L 12,12 L 16,19 L 21,5 L 17,5 L 14,14 L 12,10 L 10,14 L 7,5 Z"
                           />
                         </svg>
-                        <span>Booking Web </span>
+                        <span>Web </span>
                       </div>
                       <div className="flex items-center gap-1">
                         <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 shrink-0">
@@ -2651,7 +2634,7 @@ export default function App() {
                     {/* Spam button removed as requested */}
                   </div>
 
-                  {!isMobileLayout && !isKruAnggota && (
+                  {!isKruAnggota && (
                     <button
                       type="button"
                       onClick={() => {
@@ -2667,65 +2650,7 @@ export default function App() {
                   )}
                 </div>
 
-                {/* KHUSUS LAYAR PC: Bar Filter Status di Atas Daftar Jadwal agar Mudah Dijangkau */}
-                {!isMobileLayout && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {(
-                      [
-                        {
-                          id: 'SEMUA_BULAN',
-                          label: `Semua Bulan Ini (${ringkasanBulanIni.totalEventBulanIni})`,
-                          activeBg: '#2980B9',
-                        },
-                        {
-                          id: 'BELUM_LUNAS',
-                          label: `Belum Lunas (${
-                            ringkasanBulanIni.jmlBookingBaru + ringkasanBulanIni.jmlSudahDp
-                          })`,
-                          activeBg: '#E67E22',
-                        },
-                        {
-                          id: 'SUDAH_DP',
-                          label: `Sudah DP (${ringkasanBulanIni.jmlSudahDp})`,
-                          activeBg: '#E74C3C',
-                        },
-                        {
-                          id: 'BOOKING_BARU',
-                          label: `Booking (${ringkasanBulanIni.jmlBookingBaru})`,
-                          activeBg: '#F39C12',
-                        },
-                        {
-                          id: 'LUNAS',
-                          label: `Lunas (${ringkasanBulanIni.jmlLunas})`,
-                          activeBg: '#27AE60',
-                        },
-                      ] as const
-                    ).map((f) => {
-                      const isActive = statusFilter === f.id;
-                      return (
-                        <button
-                          key={f.id}
-                          type="button"
-                          onClick={() => {
-                            setSelectedDateStr(null);
-                            setStatusFilter(f.id);
-                            bumpCacheHit();
-                          }}
-                          className="px-3 py-1.5 rounded-lg text-xs font-bold transition-all cursor-pointer shadow-xs"
-                          style={{
-                            backgroundColor: isActive ? f.activeBg : 'rgba(0, 0, 0, 0.35)',
-                            color: '#FFFFFF',
-                            border: isActive
-                              ? '1px solid rgba(255, 255, 255, 0.5)'
-                              : '1px solid rgba(255, 255, 255, 0.12)',
-                          }}
-                        >
-                          {f.label}
-                        </button>
-                      );
-                    })}
-                  </div>
-                )}
+             
 
                 {/* Panel Khusus Pesanan Form Web yang Belum Dikonfirmasi (Hanya untuk Owner & Admin) */}
                 {!isKruAnggota && pesananWebPadaTanggalDipilih.length > 0 && (
@@ -2855,7 +2780,7 @@ export default function App() {
                             className="px-4 py-2 rounded-xl text-xs font-extrabold text-white bg-[#2980B9] hover:opacity-95 shadow cursor-pointer flex items-center gap-1.5"
                           >
                             <Plus className="w-4 h-4" />
-                            <span>Tambah Jadwal di Tanggal Ini</span>
+                            <span>Tambah Event di Tanggal Ini</span>
                           </button>
                         )}
                         {ringkasanBulanIni.totalEventBulanIni > 0 &&
@@ -2868,7 +2793,7 @@ export default function App() {
                               }}
                               className="px-4 py-2 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 cursor-pointer"
                             >
-                              Lihat Semua Bulan Ini ({ringkasanBulanIni.totalEventBulanIni} Item)
+                              Event Bulan Ini ({ringkasanBulanIni.totalEventBulanIni} Item)
                             </button>
                           )}
                       </div>
@@ -3056,33 +2981,8 @@ export default function App() {
                   <div className="mt-3 pt-2.5 border-t border-white/15 flex flex-wrap items-center gap-1.5">
                     {(
                       [
-                        {
-                          id: 'SEMUA_BULAN',
-                          label: `Semua Bulan Ini (${ringkasanBulanIni.totalEventBulanIni})`,
-                          activeBg: '#2980B9',
-                        },
-                        {
-                          id: 'BELUM_LUNAS',
-                          label: `Belum Lunas (${
-                            ringkasanBulanIni.jmlBookingBaru + ringkasanBulanIni.jmlSudahDp
-                          })`,
-                          activeBg: '#E67E22',
-                        },
-                        {
-                          id: 'SUDAH_DP',
-                          label: `Sudah DP (${ringkasanBulanIni.jmlSudahDp})`,
-                          activeBg: '#E74C3C',
-                        },
-                        {
-                          id: 'BOOKING_BARU',
-                          label: `Booking (${ringkasanBulanIni.jmlBookingBaru})`,
-                          activeBg: '#F39C12',
-                        },
-                        {
-                          id: 'LUNAS',
-                          label: `Lunas (${ringkasanBulanIni.jmlLunas})`,
-                          activeBg: '#27AE60',
-                        },
+                   
+           
                       ] as const
                     ).map((f) => {
                       const isActive = statusFilter === f.id;
@@ -4374,10 +4274,10 @@ export default function App() {
                 </div>
                 <div>
                   <h3 className="text-base font-bold text-white">
-                    Pilihan Paket &amp; Perpanjang Langganan
+                    Perpanjang Langganan
                   </h3>
                   <p className="text-xs text-slate-400">
-                    Kafela&apos;s Agenda • Hubungi Admin via WhatsApp untuk Aktivasi Cepat
+                   Hubungi Admin via WhatsApp untuk Aktivasi Cepat
                   </p>
                 </div>
               </div>
@@ -4414,8 +4314,7 @@ export default function App() {
             {/* Toggle Durasi: Bulanan vs Tahunan */}
             <div className="flex items-center justify-between pt-1">
               <div>
-                <span className="text-xs font-bold text-white/90 block">Pilih Skema Durasi:</span>
-                <span className="text-[11px] text-slate-400">Pilih durasi sebelum chat ke admin</span>
+                <span className="text-xs font-bold text-white/90 block">Pilih Durasi:</span>
               </div>
               <div className="flex items-center p-1 rounded-xl bg-black/50 border border-white/15 text-xs">
                 <button
@@ -4446,8 +4345,17 @@ export default function App() {
               </div>
             </div>
 
-            {/* Kartu Pilihan Paket (Starter, Pro, Ultimate) */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+            <button
+              type="button"
+              onClick={() => setIsPaketExpanded(!isPaketExpanded)}
+              className="w-full flex items-center justify-between p-4 rounded-2xl bg-slate-800/50 border border-slate-700 text-white font-bold text-sm cursor-pointer hover:bg-slate-700/50 transition-all"
+            >
+              <span>{isPaketExpanded ? 'Tutup Pilihan Paket' : 'Pilih Paket Langganan'}</span>
+              <span>{isPaketExpanded ? '▲' : '▼'}</span>
+            </button>
+
+            {isPaketExpanded && (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5 mt-4">
               {[
                 {
                   tier: 'Starter' as const,
@@ -4569,6 +4477,7 @@ export default function App() {
                 );
               })}
             </div>
+            )}
 
             {/* Tombol Utama Chat Admin WhatsApp untuk Perpanjangan */}
             <div className="pt-3 border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3">

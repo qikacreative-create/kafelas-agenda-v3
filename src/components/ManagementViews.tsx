@@ -436,25 +436,10 @@ export const ArsipPencarianView: React.FC<{
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-base font-bold text-white">
-              Cari Data & Gudang Arsip Kompresi (Smart Archive)
+              Cari Data & Arsip
             </h2>
           </div>
-          <button
-            type="button"
-            onClick={() => {
-              const count = onRunCompression60Days();
-              setCompressToast(
-                count > 0
-                  ? `${count} jadwal lama (> 60 hari) berhasil dikompresi ke gudang arsip!`
-                  : 'Seluruh jadwal aktif masih berusia di bawah 60 hari (Sudah Optimal).'
-              );
-              setTimeout(() => setCompressToast(null), 4000);
-            }}
-            className="flex items-center gap-2 rounded-lg bg-indigo-600 hover:bg-indigo-500 px-3.5 py-2 text-xs font-bold text-white cursor-pointer transition-colors"
-          >
-            <FolderArchive className="w-4 h-4" />
-            <span>Kompresi Jadwal &gt; 60 Hari</span>
-          </button>
+        
         </div>
 
         {compressToast && (

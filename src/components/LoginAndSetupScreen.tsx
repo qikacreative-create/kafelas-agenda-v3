@@ -345,19 +345,7 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
                 </button>
               </div>
 
-              {/* Akses Cepat Super Admin Multi-Brand Console */}
-              {onOpenSuperAdmin && (
-                <div className="pt-3 border-t border-white/10 mt-2 text-center">
-                  <button
-                    type="button"
-                    onClick={onOpenSuperAdmin}
-                    className="text-xs text-sky-400 hover:text-sky-300 font-mono flex items-center justify-center gap-1.5 mx-auto py-1 hover:underline cursor-pointer"
-                  >
-                    <Server className="w-3.5 h-3.5" />
-                    <span>Portal Super Admin (Kelola 30+ Brand SaaS)</span>
-                  </button>
-                </div>
-              )}
+
             </form>
           </>
         ) : (
