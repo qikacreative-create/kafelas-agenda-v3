@@ -1,0 +1,8 @@
+{
+  "name": "Remix qkcreative",
+  "description": "Imported from GitHub: qikacreative-create/qkcreative",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
