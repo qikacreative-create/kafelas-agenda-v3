@@ -145,6 +145,7 @@ export interface OwnerProfile {
   namaOwner: string;
   namaBrand: string;
   noWhatsApp: string;
+  email?: string;
   jenisUsaha: string;
   paketAktif: PaketLanggananTier;
   tanggalDaftar: number;

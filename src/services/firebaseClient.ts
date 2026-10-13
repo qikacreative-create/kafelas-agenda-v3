@@ -224,11 +224,22 @@ export async function signupFirebaseWithWA(
     throw new Error('Konfigurasi Firebase belum siap.');
   }
 
-  let waBersih = waInput.replace(/[^0-9]/g, '');
-  if (waBersih.startsWith('62')) {
-    waBersih = '0' + waBersih.substring(2);
+  const emailSistem = idKeEmailSistem(waInput);
+  if (!emailSistem || !emailSistem.includes('@') || emailSistem.startsWith('@')) {
+    throw new Error('Format Nomor WhatsApp atau Email tidak valid.');
   }
-  const emailSistem = `${waBersih}@kafelaagenda.com`;
+
+  const isEmailInput = waInput.includes('@') && waInput.includes('.');
+  let waBersih = waInput;
+  if (!isEmailInput) {
+    waBersih = waInput.replace(/[^0-9]/g, '');
+    if (waBersih.startsWith('62')) {
+      waBersih = '0' + waBersih.substring(2);
+    }
+    if (!waBersih || waBersih.length < 9) {
+      throw new Error('Nomor WhatsApp terlalu pendek atau tidak valid.');
+    }
+  }
   const cred = await createUserWithEmailAndPassword(fb.auth, emailSistem, password);
   const uid = cred.user.uid;
   const masaTrialMillis = Date.now() + 10 * 24 * 60 * 60 * 1000;
@@ -406,6 +417,7 @@ export async function fetchOwnerWorkspaceFromFirebase(
     namaOwner: (oData.namaOwner as string) || 'Owner',
     namaBrand: rawBrand,
     noWhatsApp: (oData.noWhatsApp as string) || '',
+    email: (oData.email as string) || '',
     jenisUsaha: (oData.jenisUsaha as string) || 'Fotografi & Studio Foto',
     paketAktif: ((oData.paketAktif as string) || 'Pro') as OwnerProfile['paketAktif'],
     tanggalDaftar: Number(oData.tanggalDaftar) || Date.now(),
@@ -1530,12 +1542,18 @@ export function getLocalCachedBrands(): BrandRegistryItem[] {
     const raw = localStorage.getItem(LOCAL_KEY_BRANDS_REGISTRY);
     if (raw) {
       const parsed = JSON.parse(raw);
-      if (Array.isArray(parsed) && parsed.length > 0) {
-        return parsed;
+      if (Array.isArray(parsed)) {
+        const realOnly = parsed.filter(
+          (b) =>
+            b.id === 'kfls' ||
+            (!b.ownerId?.startsWith('owner-') &&
+              !['kafilasuci', 'lensa-art', 'vogue-moment', 'sunset-studio', 'grand-ballroom', 'neo-cinema', 'purnama-decor', 'elixir-sound', 'baskoro-foto', 'harmoni-mua', 'velocity-drone', 'sagara-pro', 'signature-cake', 'lumina-photolab', 'aksara-mc', 'kencana-catering', 'aura-prewed', 'infinity-clip', 'flawless-mua', 'symphony-wo', 'fokus-lens', 'nostalgia-box', 'pesona-gaun', 'zenith-media', 'cinta-story', 'alunan-musik', 'gemilangtenda', 'gemilang-tenda', 'royal-heritage', 'studio-kita', 'blissful-event', 'radiant-cinema'].includes(b.slug))
+        );
+        return realOnly;
       }
     }
   } catch {}
-  return SEED_BRANDS_REGISTRY;
+  return [];
 }
 
 export function saveLocalCachedBrands(list: BrandRegistryItem[]): void {
@@ -1552,44 +1570,80 @@ export function saveLocalCachedBrands(list: BrandRegistryItem[]): void {
  */
 export async function fetchBrandsRegistryFromFirebase(): Promise<BrandRegistryItem[]> {
   const init = initKafelaFirebase();
-  const cached = getLocalCachedBrands();
-
   if (!init) {
-    return cached;
+    return getLocalCachedBrands();
   }
 
   try {
-    const collRef = collection(init.db, 'brands_registry');
-    const snap = await getDocs(collRef);
-    if (snap.empty) {
-      return cached;
+    const items: BrandRegistryItem[] = [];
+
+    // 1. Ambil otomatis seluruh studio/owner dari koleksi 'owners' di Firestore
+    try {
+      const ownersSnap = await getDocs(collection(init.db, 'owners'));
+      ownersSnap.forEach((docSnap) => {
+        const d = docSnap.data();
+        const ownerId = docSnap.id;
+        const slug = (d.username as string) || (d.slug as string) || ownerId;
+        const namaBrand = (d.namaBrand as string) || (d.namaOwner as string) || 'Studio';
+        const noWhatsApp = (d.noWhatsApp as string) || '';
+        const email = (d.email as string) || (noWhatsApp.includes('@') ? noWhatsApp : undefined);
+        const tier = (d.paketAktif as BrandRegistryItem['tier']) || 'Ultimate';
+        const tanggalDaftar = typeof d.tanggalDaftar === 'number' ? d.tanggalDaftar : Date.now();
+        const tanggalLangganan = typeof d.tanggalLangganan === 'number' ? d.tanggalLangganan : Date.now() + 365 * 86400000;
+
+        items.push({
+          id: ownerId,
+          slug: slug.toLowerCase().replace(/[^a-z0-9]/g, ''),
+          namaBrand,
+          ownerId,
+          ownerEmail: email,
+          ownerWhatsApp: noWhatsApp,
+          tier,
+          status: 'AKTIF',
+          maxJadwal: tier === 'Ultimate' ? 99999 : tier === 'Pro' ? 300 : 75,
+          createdAt: tanggalDaftar,
+          expiredAt: tanggalLangganan,
+          catatan: (d.jenisUsaha as string) || 'Studio Mandiri',
+        });
+      });
+    } catch (e) {
+      console.warn('Gagal membaca koleksi owners:', e);
     }
 
-    const items: BrandRegistryItem[] = [];
-    snap.forEach((docSnap) => {
-      const d = docSnap.data();
-      items.push({
-        id: docSnap.id,
-        slug: (d.slug as string) || docSnap.id,
-        namaBrand: (d.namaBrand as string) || 'Studio Tanpa Nama',
-        ownerId: (d.ownerId as string) || docSnap.id,
-        ownerEmail: d.ownerEmail as string | undefined,
-        ownerWhatsApp: d.ownerWhatsApp as string | undefined,
-        customDomain: d.customDomain as string | undefined,
-        tier: (d.tier as BrandRegistryItem['tier']) || 'Pro',
-        status: (d.status as BrandRegistryItem['status']) || 'AKTIF',
-        maxJadwal: typeof d.maxJadwal === 'number' ? d.maxJadwal : 300,
-        createdAt: typeof d.createdAt === 'number' ? d.createdAt : Date.now(),
-        expiredAt: typeof d.expiredAt === 'number' ? d.expiredAt : Date.now() + 365 * 86400000,
-        catatan: d.catatan as string | undefined,
+    // 2. Ambil juga dari 'brands_registry' jika ada
+    try {
+      const collRef = collection(init.db, 'brands_registry');
+      const snap = await getDocs(collRef);
+      snap.forEach((docSnap) => {
+        const d = docSnap.data();
+        const slug = (d.slug as string) || docSnap.id;
+        if (!items.some((i) => i.slug === slug || i.ownerId === d.ownerId)) {
+          items.push({
+            id: docSnap.id,
+            slug: (d.slug as string) || docSnap.id,
+            namaBrand: (d.namaBrand as string) || 'Studio Tanpa Nama',
+            ownerId: (d.ownerId as string) || docSnap.id,
+            ownerEmail: d.ownerEmail as string | undefined,
+            ownerWhatsApp: d.ownerWhatsApp as string | undefined,
+            customDomain: d.customDomain as string | undefined,
+            tier: (d.tier as BrandRegistryItem['tier']) || 'Pro',
+            status: (d.status as BrandRegistryItem['status']) || 'AKTIF',
+            maxJadwal: typeof d.maxJadwal === 'number' ? d.maxJadwal : 300,
+            createdAt: typeof d.createdAt === 'number' ? d.createdAt : Date.now(),
+            expiredAt: typeof d.expiredAt === 'number' ? d.expiredAt : Date.now() + 365 * 86400000,
+            catatan: d.catatan as string | undefined,
+          });
+        }
       });
-    });
+    } catch (e) {
+      console.warn('Gagal membaca brands_registry:', e);
+    }
 
     saveLocalCachedBrands(items);
     return items;
   } catch (err) {
-    console.warn('Gagal membaca brands_registry dari Firestore, memakai cache:', err);
-    return cached;
+    console.warn('Gagal membaca dari Firestore:', err);
+    return getLocalCachedBrands();
   }
 }
 
@@ -1685,11 +1739,12 @@ export async function saveBrandRegistryToFirebase(
  * Menghapus brand dari Firestore & cache lokal
  */
 export async function deleteBrandRegistryFromFirebase(
-  slug: string
+  slug: string,
+  ownerId?: string
 ): Promise<{ success: boolean; error?: string }> {
   const cleanSlug = slug.trim().toLowerCase();
 
-  const cached = getLocalCachedBrands().filter((b) => b.slug !== cleanSlug);
+  const cached = getLocalCachedBrands().filter((b) => b.slug !== cleanSlug && (!ownerId || b.ownerId !== ownerId));
   saveLocalCachedBrands(cached);
 
   const init = initKafelaFirebase();
@@ -1700,6 +1755,16 @@ export async function deleteBrandRegistryFromFirebase(
   try {
     const docRef = doc(init.db, 'brands_registry', cleanSlug);
     await deleteDoc(docRef);
+
+    if (ownerId) {
+      try {
+        const ownerDocRef = doc(init.db, 'owners', ownerId);
+        await deleteDoc(ownerDocRef);
+      } catch (e) {
+        console.warn('Gagal menghapus doc owner:', e);
+      }
+    }
+
     return { success: true };
   } catch (err: unknown) {
     const msg = err instanceof Error ? err.message : String(err);

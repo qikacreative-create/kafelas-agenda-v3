@@ -834,12 +834,20 @@ export default function App() {
     setActiveUserName(fbSession.displayName);
     setSessionMode('FIREBASE');
 
-    // Cek Role Super Admin
+    // Cek Role Super Admin di koleksi 'users' ATAU 'owners'
     const fb = initKafelaFirebase();
     if (fb) {
-      const userDoc = await getDoc(doc(fb.db, 'users', fbSession.uid));
-      if (userDoc.exists() && userDoc.data().role === 'superadmin') {
-        setViewMode('SUPER_ADMIN');
+      try {
+        const userDoc = await getDoc(doc(fb.db, 'users', fbSession.uid));
+        const ownerDoc = await getDoc(doc(fb.db, 'owners', fbSession.uid));
+        if (
+          (userDoc.exists() && userDoc.data().role === 'superadmin') ||
+          (ownerDoc.exists() && ownerDoc.data().role === 'superadmin')
+        ) {
+          setViewMode('SUPER_ADMIN');
+        }
+      } catch (e) {
+        console.warn('Gagal cek superadmin:', e);
       }
     }
 
@@ -2981,8 +2989,11 @@ export default function App() {
                   <div className="mt-3 pt-2.5 border-t border-white/15 flex flex-wrap items-center gap-1.5">
                     {(
                       [
-                   
-           
+                        { id: 'SEMUA_BULAN', label: 'Semua', activeBg: '#2980B9' },
+                        { id: 'TANGGAL_DIPILIH', label: 'Tanggal Ini', activeBg: '#8E44AD' },
+                        { id: 'LUNAS', label: 'Lunas', activeBg: '#27AE60' },
+                        { id: 'SUDAH_DP', label: 'Sudah DP', activeBg: '#D35400' },
+                        { id: 'BELUM_LUNAS', label: 'Belum Lunas', activeBg: '#C0392B' },
                       ] as const
                     ).map((f) => {
                       const isActive = statusFilter === f.id;

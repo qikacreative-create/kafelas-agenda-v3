@@ -1329,6 +1329,7 @@ export const PengaturanStudioView: React.FC<{
   const [namaOwner, setNamaOwner] = useState(owner.namaOwner);
   const [jenisUsaha, setJenisUsaha] = useState(owner.jenisUsaha);
   const [noWa, setNoWa] = useState(owner.noWhatsApp);
+  const [emailStudio, setEmailStudio] = useState(owner.email || '');
 
   const [usernameWeb, setUsernameWeb] = useState(owner.username || owner.uid || 'kafelastudio');
   const [taglineWeb, setTaglineWeb] = useState(owner.taglineWeb);
@@ -1399,6 +1400,7 @@ export const PengaturanStudioView: React.FC<{
     setNamaOwner(owner.namaOwner || '');
     setJenisUsaha(owner.jenisUsaha || '');
     setNoWa(owner.noWhatsApp || '');
+    setEmailStudio(owner.email || '');
     setUsernameWeb(owner.username || owner.uid || 'kafelastudio');
     setTaglineWeb(owner.taglineWeb || '');
     setBioWeb(owner.bioWeb || '');
@@ -1602,9 +1604,9 @@ export const PengaturanStudioView: React.FC<{
     }
   };
 
-  const targetIdParam = (usernameWeb || owner.uid || '').trim();
-  const linkProfilUtama = `kflsagnd.web.app/${targetIdParam}`;
-  const linkBookingUtama = `kflsagnd.web.app/b/${targetIdParam}`;
+  const targetIdParam = (owner.username || usernameWeb || 'studio').trim();
+  const linkProfilUtama = `${targetIdParam}.web.app`;
+  const linkBookingUtama = `${targetIdParam}.web.app/booking`;
   const localBookingUrl = `/booking.html?id=${encodeURIComponent(targetIdParam)}&tema=${encodeURIComponent(temaWeb)}&v=${previewReloadKey}`;
   const localProfilUrl = `/profil.html?id=${encodeURIComponent(targetIdParam)}&uid=${encodeURIComponent(owner.uid || '')}&preview=1&tema=${encodeURIComponent(temaWeb)}&v=${previewReloadKey}`;
 
@@ -1768,7 +1770,7 @@ export const PengaturanStudioView: React.FC<{
             </div>
           </div>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3.5">
             <div>
               <label className="block text-slate-400 mb-1">Jenis Usaha Utama (Modul Form)</label>
               <select
@@ -1789,7 +1791,18 @@ export const PengaturanStudioView: React.FC<{
                 type="tel"
                 value={noWa}
                 onChange={(e) => setNoWa(e.target.value)}
+                placeholder="08123456789"
                 className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+              />
+            </div>
+            <div>
+              <label className="block text-slate-400 mb-1">Email Kontak (Opsional)</label>
+              <input
+                type="email"
+                value={emailStudio}
+                onChange={(e) => setEmailStudio(e.target.value)}
+                placeholder="studio@email.com"
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white"
               />
             </div>
           </div>
@@ -1804,8 +1817,9 @@ export const PengaturanStudioView: React.FC<{
                   namaOwner: namaOwner.trim(),
                   jenisUsaha,
                   noWhatsApp: noWa.trim(),
+                  email: emailStudio.trim(),
                 },
-                'Profil Brand & Jenis Usaha berhasil disimpan!'
+                'Profil Brand & Kontak berhasil disimpan!'
               )
             }
             className="w-full py-3 rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-60 text-white font-bold cursor-pointer"
@@ -1879,15 +1893,29 @@ export const PengaturanStudioView: React.FC<{
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
             <div>
-              <label className="block text-slate-400 mb-1">Username Tautan (Tanpa Spasi)</label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-slate-400">Username Tautan (Tanpa Spasi)</label>
+                {Boolean(owner.username && owner.username.trim().length > 0) && (
+                  <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/30">
+                    🔒 Terkunci Permanen
+                  </span>
+                )}
+              </div>
               <input
                 type="text"
                 value={usernameWeb}
+                disabled={Boolean(owner.username && owner.username.trim().length > 0)}
                 onChange={(e) =>
                   setUsernameWeb(e.target.value.toLowerCase().replace(/\s+/g, ''))
                 }
-                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono"
+                placeholder="Contoh: kaphotostudio"
+                className="w-full rounded-lg bg-slate-950 border border-slate-700 px-3 py-2.5 text-white font-mono disabled:opacity-60 disabled:cursor-not-allowed"
               />
+              <p className="text-[10px] text-slate-400 mt-1">
+                {owner.username
+                  ? 'Username web sudah dikunci agar tautan tidak berubah.'
+                  : 'Atur sekali dan akan dikunci permanen untuk kestabilan web.'}
+              </p>
             </div>
             <div>
               <label className="block text-slate-400 mb-1">Slogan Singkat (Tampil di Halaman Utama)</label>

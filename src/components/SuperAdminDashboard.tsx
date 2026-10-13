@@ -82,7 +82,11 @@ export function SuperAdminDashboard({
   const [formDurasiBulan, setFormDurasiBulan] = useState<number>(12);
   const [formCatatan, setFormCatatan] = useState<string>('');
 
-  const currentHost = typeof window !== 'undefined' ? window.location.origin : 'https://kflsagnd.web.app';
+  const getBrandDomain = (slug: string, customDom?: string) => {
+    const dom = (customDom || '').trim();
+    if (dom) return dom.replace(/^https?:\/\//, '').replace(/\/$/, '');
+    return `${slug}.web.app`;
+  };
 
   useEffect(() => {
     if (isUnlocked) {
@@ -114,7 +118,7 @@ export function SuperAdminDashboard({
       setIsUnlocked(true);
       setPinError('');
     } else {
-      setPinError('PIN Master salah! Gunakan PIN default 889900');
+      setPinError('PIN Master salah! Gunakan PIN default');
     }
   };
 
@@ -213,13 +217,52 @@ export function SuperAdminDashboard({
     }
   };
 
+  const handleClearDemoBrands = async () => {
+    if (!confirm('Hapus semua brand contoh/demo dari direktori?')) return;
+    try {
+      localStorage.removeItem('KAFELA_BRANDS_REGISTRY_V1');
+      setBrands([]);
+      showToast('Semua brand contoh berhasil dihapus.');
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
   const handleDeleteBrand = async (b: BrandRegistryItem) => {
-    if (!confirm(`Hapus brand "${b.namaBrand}" (${b.slug}) dari direktori?`)) return;
+    if (!confirm(`Hapus brand "${b.namaBrand}" (${b.slug}) beserta seluruh data akses secara permanen?`)) return;
 
     setIsLoading(true);
-    await deleteBrandRegistryFromFirebase(b.slug);
+    const res = await deleteBrandRegistryFromFirebase(b.slug, b.ownerId);
     setIsLoading(false);
-    showToast(`Brand "${b.namaBrand}" telah dihapus.`);
+    if (res.success) {
+      showToast(`Brand "${b.namaBrand}" telah dihapus.`);
+      loadBrandsData();
+    } else {
+      alert(`Gagal menghapus brand: ${res.error || 'Terjadi kesalahan'}`);
+    }
+  };
+
+  const handleExtend30Days = async (b: BrandRegistryItem) => {
+    const baseTime = Math.max(b.expiredAt || Date.now(), Date.now());
+    const newExpiredAt = baseTime + 30 * 24 * 60 * 60 * 1000;
+    const updated: BrandRegistryItem = { ...b, expiredAt: newExpiredAt, status: 'AKTIF' };
+    setIsLoading(true);
+    await saveBrandRegistryToFirebase(updated);
+    setIsLoading(false);
+    showToast(`Masa aktif "${b.namaBrand}" berhasil diperpanjang 30 hari.`);
+    loadBrandsData();
+  };
+
+  const handleQuickChangeTier = async (b: BrandRegistryItem, newTier: PaketLanggananTier) => {
+    const updated: BrandRegistryItem = {
+      ...b,
+      tier: newTier,
+      maxJadwal: newTier === 'Ultimate' ? 99999 : newTier === 'Pro' ? 300 : 75,
+    };
+    setIsLoading(true);
+    await saveBrandRegistryToFirebase(updated);
+    setIsLoading(false);
+    showToast(`Tier "${b.namaBrand}" diubah ke ${newTier}.`);
     loadBrandsData();
   };
 
@@ -249,7 +292,10 @@ export function SuperAdminDashboard({
         (b.ownerEmail && b.ownerEmail.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchTier = filterTier === 'ALL' || b.tier === filterTier;
-      const matchStatus = filterStatus === 'ALL' || b.status === filterStatus;
+      const daysLeft = Math.ceil((b.expiredAt - Date.now()) / (1000 * 60 * 60 * 24));
+      const matchStatus =
+        filterStatus === 'ALL' ||
+        (filterStatus === 'HAMPIR_HABIS' ? daysLeft > 0 && daysLeft <= 7 : b.status === filterStatus);
 
       return matchSearch && matchTier && matchStatus;
     });
@@ -295,7 +341,7 @@ export function SuperAdminDashboard({
                   type="password"
                   value={pinInput}
                   onChange={(e) => setPinInput(e.target.value)}
-                  placeholder="PIN Master (bawaan: 889900)"
+                  placeholder="PIN Master"
                   className="w-full bg-slate-950 border border-slate-800 focus:border-sky-500 rounded-xl px-4 py-3 text-sm font-mono text-center tracking-widest text-slate-100 focus:outline-none"
                   autoFocus
                 />
@@ -306,17 +352,16 @@ export function SuperAdminDashboard({
 
             <button
               type="submit"
-              className="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2"
+              className="w-full bg-sky-600 hover:bg-sky-500 text-white font-semibold py-3 px-4 rounded-xl text-sm transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <Lock className="w-4 h-4" /> Buka Master Console
             </button>
           </form>
 
           <div className="mt-6 pt-5 border-t border-slate-800/80 flex justify-between items-center text-xs text-slate-500">
-            <span>PIN Standar: <code className="font-mono text-slate-300">889900</code></span>
             <button
               onClick={onExitSuperAdmin}
-              className="text-slate-400 hover:text-slate-200 underline"
+              className="text-slate-400 hover:text-slate-200 underline cursor-pointer"
             >
               Kembali ke Kasir
             </button>
@@ -342,7 +387,7 @@ export function SuperAdminDashboard({
       {/* TOP BAR CONTRACT: Brand Wordmark — Breadcrumb/Links — Action CTA */}
       <header className="h-16 border-b border-slate-800 bg-slate-900/90 backdrop-blur-md px-4 sm:px-6 flex items-center justify-between gap-6 sticky top-0 z-30">
         <div className="flex items-center gap-3 shrink-0">
-          <div className="w-9 h-9 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400">
+          <div className="w-9 h-9 rounded-lg bg-sky-500/10 border border-sky-500/20 flex items-center justify-center text-sky-400 shadow-inner">
             <Server className="w-5 h-5" />
           </div>
           <div>
@@ -375,15 +420,24 @@ export function SuperAdminDashboard({
         <div className="flex items-center gap-2.5 shrink-0">
           <button
             onClick={handleOpenAddModal}
-            className="bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
+            className="bg-sky-600 hover:bg-sky-500 text-white font-medium text-xs px-3.5 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer shadow-md"
           >
             <Plus className="w-3.5 h-3.5" />
             <span>Daftarkan Brand</span>
           </button>
 
           <button
+            onClick={handleClearDemoBrands}
+            className="bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 font-medium text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap border border-rose-500/30 cursor-pointer"
+            title="Hapus semua brand contoh"
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Hapus Contoh</span>
+          </button>
+
+          <button
             onClick={onExitSuperAdmin}
-            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap border border-slate-700"
+            className="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap border border-slate-700 cursor-pointer"
             title="Keluar ke mode Kasir Studio"
           >
             <ExternalLink className="w-3.5 h-3.5" />
@@ -392,7 +446,7 @@ export function SuperAdminDashboard({
 
           <button
             onClick={handleLockAdmin}
-            className="text-slate-400 hover:text-slate-200 p-2 rounded-lg hover:bg-slate-800 transition-colors"
+            className="text-slate-400 hover:text-slate-200 p-2 rounded-lg hover:bg-slate-800 transition-colors cursor-pointer"
             title="Kunci Console"
           >
             <Lock className="w-4 h-4" />
@@ -404,7 +458,7 @@ export function SuperAdminDashboard({
       <main className="flex-1 p-4 sm:p-6 max-w-7xl w-full mx-auto space-y-6">
         {/* STATS STRIP: 4 Metric Cards */}
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-slate-400">Total Klien / Brand</span>
               <Building2 className="w-4 h-4 text-sky-400" />
@@ -421,7 +475,7 @@ export function SuperAdminDashboard({
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-emerald-400">Lisensi Aktif</span>
               <ShieldCheck className="w-4 h-4 text-emerald-400" />
@@ -434,7 +488,7 @@ export function SuperAdminDashboard({
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-amber-400">Masa Trial</span>
               <Clock className="w-4 h-4 text-amber-400" />
@@ -447,7 +501,7 @@ export function SuperAdminDashboard({
             </div>
           </div>
 
-          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4">
+          <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 shadow-sm hover:border-slate-700 transition-colors">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs text-rose-400">Kedaluwarsa / Suspended</span>
               <AlertTriangle className="w-4 h-4 text-rose-400" />
@@ -462,7 +516,7 @@ export function SuperAdminDashboard({
         </div>
 
         {/* SEARCH & FILTER CONTROLS */}
-        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center">
+        <div className="bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col md:flex-row gap-3 justify-between items-stretch md:items-center shadow-sm">
           <div className="relative flex-1 max-w-md">
             <Search className="w-4 h-4 text-slate-400 absolute left-3 top-3" />
             <input
@@ -475,7 +529,7 @@ export function SuperAdminDashboard({
             {searchQuery && (
               <button
                 onClick={() => setSearchQuery('')}
-                className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300"
+                className="absolute right-3 top-2.5 text-slate-500 hover:text-slate-300 cursor-pointer"
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -487,11 +541,12 @@ export function SuperAdminDashboard({
             <select
               value={filterStatus}
               onChange={(e) => setFilterStatus(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500"
+              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer"
             >
               <option value="ALL">Semua Status</option>
               <option value="AKTIF">Hanya Aktif</option>
               <option value="TRIAL">Hanya Trial</option>
+              <option value="HAMPIR_HABIS">Hampir Habis (&lt; 7 hari)</option>
               <option value="SUSPENDED">Hanya Suspended</option>
             </select>
 
@@ -499,7 +554,7 @@ export function SuperAdminDashboard({
             <select
               value={filterTier}
               onChange={(e) => setFilterTier(e.target.value)}
-              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500"
+              className="bg-slate-950 border border-slate-800 rounded-lg px-3 py-2 text-xs text-slate-300 focus:outline-none focus:border-sky-500 cursor-pointer"
             >
               <option value="ALL">Semua Tier</option>
               <option value="Ultimate">Tier Ultimate</option>
@@ -511,7 +566,7 @@ export function SuperAdminDashboard({
             <button
               onClick={handleSyncAllToFirestore}
               disabled={isLoading}
-              className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap"
+              className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 text-xs px-3 py-2 rounded-lg transition-colors flex items-center gap-1.5 whitespace-nowrap cursor-pointer"
               title="Sinkronkan semua data brand ke Firestore"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? 'animate-spin' : ''}`} />
@@ -545,7 +600,7 @@ export function SuperAdminDashboard({
                   <th className="py-3 px-4">Pemilik &amp; Kontak</th>
                   <th className="py-3 px-4">Tier &amp; Kuota</th>
                   <th className="py-3 px-4">Status &amp; Masa Berlaku</th>
-                  <th className="py-3 px-4 text-right">Aksi Cepat</th>
+                  <th className="py-3 px-4 text-right">Aksi Cepat (1-Klik)</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
@@ -558,6 +613,7 @@ export function SuperAdminDashboard({
                 ) : (
                   filteredBrands.map((b) => {
                     const isExpired = b.expiredAt < Date.now();
+                    const daysLeft = Math.ceil((b.expiredAt - Date.now()) / (1000 * 60 * 60 * 24));
                     const statusClass =
                       b.status === 'AKTIF' && !isExpired
                         ? 'text-emerald-400 bg-emerald-500/10 border-emerald-500/20'
@@ -591,19 +647,12 @@ export function SuperAdminDashboard({
 
                         {/* Custom Domain / URL */}
                         <td className="py-3 px-4">
-                          {b.customDomain ? (
-                            <div className="flex items-center gap-1 font-mono text-[11px] text-emerald-400">
-                              <Globe className="w-3 h-3 text-emerald-400 shrink-0" />
-                              <span>{b.customDomain}</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-1 font-mono text-[11px] text-slate-400">
-                              <Globe className="w-3 h-3 text-slate-600 shrink-0" />
-                              <span>{currentHost.replace(/^https?:\/\//, '')}/{b.slug}</span>
-                            </div>
-                          )}
+                          <div className="flex items-center gap-1 font-mono text-[11px] text-sky-400">
+                            <Globe className="w-3 h-3 text-sky-500 shrink-0" />
+                            <span>{getBrandDomain(b.slug, b.customDomain)}</span>
+                          </div>
                           <div className="text-[10px] text-slate-500 font-mono">
-                            Booking: /b/{b.slug}
+                            Booking: {getBrandDomain(b.slug, b.customDomain)}/booking
                           </div>
                         </td>
 
@@ -625,24 +674,32 @@ export function SuperAdminDashboard({
 
                         {/* Tier */}
                         <td className="py-3 px-4">
-                          <span
-                            className={`inline-block text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${tierBadgeClass}`}
+                          <select
+                            value={b.tier}
+                            onChange={(e) => handleQuickChangeTier(b, e.target.value as PaketLanggananTier)}
+                            className={`inline-block text-[10px] font-mono font-semibold px-2 py-1 rounded border ${tierBadgeClass} bg-slate-950 focus:outline-none focus:border-sky-500 cursor-pointer`}
+                            title="Ganti paket tier instan"
                           >
-                            {b.tier}
-                          </span>
+                            <option value="Starter">Starter (75/bln)</option>
+                            <option value="Pro">Pro (300/bln)</option>
+                            <option value="Ultimate">Ultimate (Unlimited)</option>
+                          </select>
                           <div className="text-[10px] font-mono text-slate-400 mt-1">
                             Maks {b.maxJadwal && b.maxJadwal > 1000 ? 'Tanpa Batas' : `${b.maxJadwal || 300}/bln`}
                           </div>
                         </td>
 
-                        {/* Status */}
+                        {/* Status & Masa Berlaku */}
                         <td className="py-3 px-4">
                           <span
                             className={`inline-block text-[10px] font-mono font-semibold px-2 py-0.5 rounded border ${statusClass}`}
                           >
                             {isExpired ? 'KEDALUWARSA' : b.status}
                           </span>
-                          <div className="text-[10px] font-mono text-slate-400 mt-1">
+                          <div className={`text-[10px] font-mono mt-1 ${daysLeft <= 7 && daysLeft > 0 ? 'text-amber-400 font-bold' : daysLeft <= 0 ? 'text-rose-400 font-bold' : 'text-slate-300'}`}>
+                            {daysLeft > 0 ? `Sisa ${daysLeft} hari lagi` : 'Masa aktif habis'}
+                          </div>
+                          <div className="text-[9px] text-slate-500 font-mono">
                             s/d {formatTanggalIndo(b.expiredAt)}
                           </div>
                         </td>
@@ -650,13 +707,23 @@ export function SuperAdminDashboard({
                         {/* Aksi Cepat */}
                         <td className="py-3 px-4 text-right">
                           <div className="flex items-center justify-end gap-1.5">
+                            {/* Tombol Perpanjang 30 Hari Cepat */}
+                            <button
+                              onClick={() => handleExtend30Days(b)}
+                              className="px-2 py-1 bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 rounded text-[10px] font-mono font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                              title="Perpanjang masa aktif 30 hari instan"
+                            >
+                              <Clock className="w-3 h-3" />
+                              <span>+30H</span>
+                            </button>
+
                             {/* Buka Web Publik */}
                             <a
                               href={`/profil.html?id=${encodeURIComponent(b.slug)}`}
                               target="_blank"
                               rel="noreferrer"
                               className="p-1.5 text-slate-400 hover:text-sky-400 hover:bg-slate-800 rounded transition-colors"
-                              title="Lihat Web Publik (Tombol masuk tersembunyi)"
+                              title="Lihat Web Publik"
                             >
                               <Globe className="w-3.5 h-3.5" />
                             </a>
@@ -664,7 +731,7 @@ export function SuperAdminDashboard({
                             {/* Buka Kasir Studio Ini */}
                             <button
                               onClick={() => onSelectBrandForCashier(b)}
-                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-emerald-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
                               title="Buka Kasir & Agenda Studio ini"
                             >
                               <Zap className="w-3.5 h-3.5" />
@@ -673,7 +740,7 @@ export function SuperAdminDashboard({
                             {/* Bagikan Link & Panduan Klien */}
                             <button
                               onClick={() => setShareBrand(b)}
-                              className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-indigo-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
                               title="Bagikan Tautan & Kunci Akses Klien"
                             >
                               <Share2 className="w-3.5 h-3.5" />
@@ -682,7 +749,7 @@ export function SuperAdminDashboard({
                             {/* Edit */}
                             <button
                               onClick={() => handleOpenEditModal(b)}
-                              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-slate-200 hover:bg-slate-800 rounded transition-colors cursor-pointer"
                               title="Edit Lisensi & Domain"
                             >
                               <Layers className="w-3.5 h-3.5" />
@@ -691,7 +758,7 @@ export function SuperAdminDashboard({
                             {/* Hapus */}
                             <button
                               onClick={() => handleDeleteBrand(b)}
-                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors"
+                              className="p-1.5 text-slate-400 hover:text-rose-400 hover:bg-slate-800 rounded transition-colors cursor-pointer"
                               title="Hapus Brand"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
@@ -761,7 +828,7 @@ export function SuperAdminDashboard({
                   />
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1">
-                  URL akses publik nantinya: <code className="text-sky-400 font-mono">{currentHost}/{formSlug || 'slug'}</code>
+                  URL akses publik nantinya: <code className="text-sky-400 font-mono">https://{getBrandDomain(formSlug || 'slug', formCustomDomain)}</code>
                 </p>
               </div>
 
@@ -916,7 +983,7 @@ export function SuperAdminDashboard({
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `${currentHost}/profil.html?id=${encodeURIComponent(shareBrand.slug)}`,
+                        `https://${getBrandDomain(shareBrand.slug, shareBrand.customDomain)}`,
                         'webPublik'
                       )
                     }
@@ -931,7 +998,7 @@ export function SuperAdminDashboard({
                   </button>
                 </div>
                 <div className="font-mono text-sky-400 bg-slate-900 px-2 py-1.5 rounded text-[11px] break-all">
-                  {currentHost}/profil.html?id={shareBrand.slug}
+                  https://{getBrandDomain(shareBrand.slug, shareBrand.customDomain)}
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1">
                   * Tombol masuk kasir disembunyikan sepenuhnya dari pandangan pengunjung publik.
@@ -948,7 +1015,7 @@ export function SuperAdminDashboard({
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `${currentHost}/booking.html?id=${encodeURIComponent(shareBrand.slug)}`,
+                        `https://${getBrandDomain(shareBrand.slug, shareBrand.customDomain)}/booking`,
                         'booking'
                       )
                     }
@@ -963,7 +1030,7 @@ export function SuperAdminDashboard({
                   </button>
                 </div>
                 <div className="font-mono text-emerald-400 bg-slate-900 px-2 py-1.5 rounded text-[11px] break-all">
-                  {currentHost}/booking.html?id={shareBrand.slug}
+                  https://{getBrandDomain(shareBrand.slug, shareBrand.customDomain)}/booking
                 </div>
               </div>
 
@@ -977,7 +1044,7 @@ export function SuperAdminDashboard({
                   <button
                     onClick={() =>
                       copyToClipboard(
-                        `${currentHost}/?brand=${encodeURIComponent(shareBrand.slug)}&app=1`,
+                        `https://${getBrandDomain(shareBrand.slug, shareBrand.customDomain)}/?app=1`,
                         'kasir'
                       )
                     }
@@ -992,7 +1059,7 @@ export function SuperAdminDashboard({
                   </button>
                 </div>
                 <div className="font-mono text-amber-400 bg-slate-900 px-2 py-1.5 rounded text-[11px] break-all">
-                  {currentHost}/?brand={shareBrand.slug}&amp;app=1
+                  https://{getBrandDomain(shareBrand.slug, shareBrand.customDomain)}/?app=1
                 </div>
                 <p className="text-[10px] text-slate-500 mt-1">
                   * Akses langsung ke kasir, input jadwal, printer Bluetooth, dan keuangan khusus brand ini.
@@ -1004,7 +1071,8 @@ export function SuperAdminDashboard({
                 <button
                   type="button"
                   onClick={() => {
-                    const text = `Halo Kak dari ${shareBrand.namaBrand}! 👋\n\nSelamat! Sistem Web & Kasir Studio Anda sudah aktif.\n\n🌐 Web Portofolio & Profil Resmi:\n${currentHost}/profil.html?id=${shareBrand.slug}\n\n📅 Link Booking Calon Klien:\n${currentHost}/booking.html?id=${shareBrand.slug}\n\n💼 Portal Privat Kasir & Agenda Kru:\n${currentHost}/?brand=${shareBrand.slug}&app=1\n\nPaket Lisensi: ${shareBrand.tier}\nStatus: Aktif\n\nTerima kasih dan selamat berkarya!`;
+                    const brandDom = getBrandDomain(shareBrand.slug, shareBrand.customDomain);
+                    const text = `Halo Kak dari ${shareBrand.namaBrand}! 👋\n\nSelamat! Sistem Web & Kasir Studio Anda sudah aktif.\n\n🌐 Web Portofolio & Profil Resmi:\nhttps://${brandDom}\n\n📅 Link Booking Calon Klien:\nhttps://${brandDom}/booking\n\n💼 Portal Privat Kasir & Agenda Kru:\nhttps://${brandDom}/?app=1\n\nPaket Lisensi: ${shareBrand.tier}\nStatus: Aktif\n\nTerima kasih dan selamat berkarya!`;
                     copyToClipboard(text, 'semuaWa');
                   }}
                   className="w-full bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold py-2.5 px-4 rounded-xl flex items-center justify-center gap-2 border border-slate-700 transition-colors"

@@ -62,6 +62,9 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
   const formatAuthError = (err: unknown, isSignup = false): string => {
     const raw = err instanceof Error ? err.message : String(err);
     const m = raw.toLowerCase();
+    if (m.includes('invalid-email') || m.includes('invalid email')) {
+      return 'Format nomor WhatsApp atau email tidak valid. Masukkan nomor WhatsApp yang benar (minimal 9-10 digit angka).';
+    }
     if (m.includes('invalid-credential') || m.includes('user-not-found') || m.includes('wrong-password')) {
       return isSignup
         ? 'Format data pendaftaran tidak valid.'
@@ -421,7 +424,7 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
 
               <div>
                 <label className="block text-xs mb-1" style={{ color: '#AAAAAA' }}>
-                  Nomor WhatsApp Aktif
+                  Nomor WhatsApp atau Email
                 </label>
                 <div
                   className="flex items-center rounded-lg border px-3.5 py-2.5"
@@ -429,8 +432,8 @@ export const LoginAndSetupScreen: React.FC<LoginAndSetupScreenProps> = ({
                 >
                   <Phone className="w-4 h-4 mr-2.5 shrink-0" style={{ color: '#888888' }} />
                   <input
-                    type="tel"
-                    placeholder="Contoh: 081234567890"
+                    type="text"
+                    placeholder="Contoh: 081234567890 / email@gmail.com"
                     value={waInput}
                     onChange={(e) => setWaInput(e.target.value)}
                     className="w-full bg-transparent text-sm text-white placeholder-[#666666] focus:outline-none"
